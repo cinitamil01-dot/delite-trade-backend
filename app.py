@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
 import yfinance as yf
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 import os
 import json
 import urllib.request
@@ -189,6 +190,62 @@ def signals():
             }
 
     return jsonify(result)
+
+
+@app.route("/market-alert")
+def market_alert():
+    lines = [
+        "📊 DELITE TRADE MARKET ALERT",
+        ""
+    ]
+
+    for key, (ticker_symbol, display_name) in SYMBOLS.items():
+        try:
+            data = get_quote(ticker_symbol, display_name)
+            change_pct = data.get("change_pct")
+
+            if change_pct is None:
+                signal = "NO DATA"
+                change_text = "N/A"
+            elif change_pct > 0:
+                signal = "UP"
+                change_text = f"+{change_pct:.2f}%"
+            elif change_pct < 0:
+                signal = "DOWN"
+                change_text = f"{change_pct:.2f}%"
+            else:
+                signal = "FLAT"
+                change_text = "0.00%"
+
+            lines.append(
+                f"{display_name}: {data['price']:.2f} | {change_text} | {signal}"
+            )
+        except Exception as e:
+            lines.append(f"{display_name}: DATA ERROR")
+
+    ist_now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    lines.extend([
+        "",
+        f"Time: {ist_now.strftime('%d-%m-%Y %I:%M:%S %p')} IST",
+        "Source: Yahoo Finance via yfinance",
+        "",
+        "Paper-trading alert only. Not an execution signal."
+    ])
+
+    message = "\n".join(lines)
+
+    try:
+        telegram = send_telegram_message(message)
+        return jsonify({
+            "status": "sent",
+            "message": message,
+            "telegram": telegram
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
 
 
 @app.route("/test-alert")
