@@ -69,8 +69,8 @@ def get_quote(ticker_symbol, display_name):
 
 
 def send_telegram_message(message):
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").replace("\r", "").replace("\n", "").strip()
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").replace("\r", "").replace("\n", "").strip()
 
     if not token or not chat_id:
         raise RuntimeError(
