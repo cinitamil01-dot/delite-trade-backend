@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 import yfinance as yf
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -9,6 +10,7 @@ import urllib.parse
 import requests
 
 app = Flask(__name__)
+CORS(app)
 
 SYMBOLS = {
     "nifty": ("^NSEI", "NIFTY 50"),
