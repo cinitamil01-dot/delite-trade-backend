@@ -125,3 +125,40 @@ def market():
             }
 
     return jsonify(result)
+
+
+@app.route("/signals")
+def signals():
+    result = {}
+
+    for key, (ticker_symbol, display_name) in SYMBOLS.items():
+        try:
+            data = get_quote(ticker_symbol, display_name)
+
+            change_pct = data.get("change_pct")
+
+            if change_pct is None:
+                signal = "NO DATA"
+            elif change_pct > 0:
+                signal = "UP"
+            elif change_pct < 0:
+                signal = "DOWN"
+            else:
+                signal = "FLAT"
+
+            result[key] = {
+                "symbol": display_name,
+                "price": data["price"],
+                "change_pct": change_pct,
+                "signal": signal,
+                "timestamp_utc": data["timestamp_utc"]
+            }
+
+        except Exception as e:
+            result[key] = {
+                "symbol": display_name,
+                "signal": "ERROR",
+                "error": str(e)
+            }
+
+    return jsonify(result)
