@@ -7,21 +7,35 @@ app = Flask(__name__)
 SYMBOLS = {
     "nifty": ("^NSEI", "NIFTY 50"),
     "sensex": ("^BSESN", "SENSEX"),
+    "crude": ("CL=F", "WTI CRUDE"),
+    "natgas": ("NG=F", "NATURAL GAS"),
 }
+
 
 def get_quote(ticker_symbol, display_name):
     ticker = yf.Ticker(ticker_symbol)
-    df = ticker.history(period="1d", interval="1m", auto_adjust=False)
+
+    df = ticker.history(
+        period="1d",
+        interval="1m",
+        auto_adjust=False
+    )
 
     if df.empty:
         raise RuntimeError("No market data returned")
 
     row = df.dropna(subset=["Close"]).iloc[-1]
-    price = float(row["Close"])
 
+    price = float(row["Close"])
     previous = None
+
     try:
-        daily = ticker.history(period="5d", interval="1d", auto_adjust=False)
+        daily = ticker.history(
+            period="5d",
+            interval="1d",
+            auto_adjust=False
+        )
+
         if len(daily) >= 2:
             previous = float(daily["Close"].iloc[-2])
     except Exception:
@@ -29,6 +43,7 @@ def get_quote(ticker_symbol, display_name):
 
     change = None
     change_pct = None
+
     if previous:
         change = price - previous
         change_pct = (change / previous) * 100
@@ -48,6 +63,7 @@ def get_quote(ticker_symbol, display_name):
         "timestamp_utc": datetime.now(timezone.utc).isoformat()
     }
 
+
 @app.route("/")
 def home():
     return jsonify({
@@ -57,9 +73,11 @@ def home():
         "market_data": "free/public source adapter"
     })
 
+
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"})
+
 
 @app.route("/nifty")
 def nifty():
@@ -68,6 +86,7 @@ def nifty():
     except Exception as e:
         return jsonify({"error": str(e), "symbol": "NIFTY 50"}), 502
 
+
 @app.route("/sensex")
 def sensex():
     try:
@@ -75,12 +94,34 @@ def sensex():
     except Exception as e:
         return jsonify({"error": str(e), "symbol": "SENSEX"}), 502
 
+
+@app.route("/crude")
+def crude():
+    try:
+        return jsonify(get_quote(*SYMBOLS["crude"]))
+    except Exception as e:
+        return jsonify({"error": str(e), "symbol": "WTI CRUDE"}), 502
+
+
+@app.route("/natgas")
+def natgas():
+    try:
+        return jsonify(get_quote(*SYMBOLS["natgas"]))
+    except Exception as e:
+        return jsonify({"error": str(e), "symbol": "NATURAL GAS"}), 502
+
+
 @app.route("/market")
 def market():
     result = {}
+
     for key, (ticker_symbol, display_name) in SYMBOLS.items():
         try:
             result[key] = get_quote(ticker_symbol, display_name)
         except Exception as e:
-            result[key] = {"error": str(e), "symbol": display_name}
+            result[key] = {
+                "error": str(e),
+                "symbol": display_name
+            }
+
     return jsonify(result)
