@@ -248,6 +248,61 @@ def market_alert():
         }), 500
 
 
+
+ALERT_THRESHOLDS = {"nifty": 0.50, "sensex": 0.50, "crude": 1.00, "natgas": 1.00}
+
+
+@app.route("/threshold-alert")
+def threshold_alert():
+    triggered = []
+
+    for key, (ticker_symbol, display_name) in SYMBOLS.items():
+        try:
+            data = get_quote(ticker_symbol, display_name)
+            change_pct = data.get("change_pct")
+            threshold = ALERT_THRESHOLDS[key]
+
+            if change_pct is not None and abs(change_pct) >= threshold:
+                direction = "UP" if change_pct > 0 else "DOWN"
+                sign = "+" if change_pct > 0 else ""
+                triggered.append(
+                    f"🚨 {display_name} {direction}\n"
+                    f"Price: {data['price']:.2f}\n"
+                    f"Change: {sign}{change_pct:.2f}%\n"
+                    f"Threshold: {threshold:.2f}%"
+                )
+        except Exception:
+            continue
+
+    ist_now = datetime.now(ZoneInfo("Asia/Kolkata"))
+
+    if not triggered:
+        return jsonify({
+            "status": "no_alert",
+            "message": "No configured market threshold has been crossed.",
+            "checked_at_ist": ist_now.isoformat()
+        })
+
+    message = (
+        "⚡ DELITE TRADE THRESHOLD ALERT\n\n"
+        + "\n\n".join(triggered)
+        + f"\n\nTime: {ist_now.strftime('%d-%m-%Y %I:%M:%S %p')} IST"
+        + "\nSource: Yahoo Finance via yfinance"
+        + "\n\nPaper-trading alert only. Not an execution signal."
+    )
+
+    try:
+        telegram = send_telegram_message(message)
+        return jsonify({
+            "status": "sent",
+            "triggered": len(triggered),
+            "message": message,
+            "telegram": telegram
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+
 @app.route("/test-alert")
 def test_alert():
     message = (
