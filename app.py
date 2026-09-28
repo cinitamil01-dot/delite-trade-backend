@@ -1,6 +1,10 @@
 from flask import Flask, jsonify
 import yfinance as yf
 from datetime import datetime, timezone
+import os
+import json
+import urllib.request
+import urllib.parse
 
 app = Flask(__name__)
 
@@ -64,13 +68,36 @@ def get_quote(ticker_symbol, display_name):
     }
 
 
+def send_telegram_message(message):
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+
+    if not token or not chat_id:
+        raise RuntimeError(
+            "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not configured"
+        )
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+
+    data = urllib.parse.urlencode({
+        "chat_id": chat_id,
+        "text": message
+    }).encode()
+
+    request = urllib.request.Request(url, data=data)
+
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return json.loads(response.read().decode())
+
+
 @app.route("/")
 def home():
     return jsonify({
         "service": "Delite Trade Backend",
         "status": "running",
         "mode": "paper trading",
-        "market_data": "free/public source adapter"
+        "market_data": "free/public source adapter",
+        "telegram_alerts": "enabled"
     })
 
 
@@ -162,3 +189,26 @@ def signals():
             }
 
     return jsonify(result)
+
+
+@app.route("/test-alert")
+def test_alert():
+    message = (
+        "🚨 DELITE TRADE TEST ALERT\n\n"
+        "Telegram connection is working.\n"
+        "Market alert system is ready for testing."
+    )
+
+    try:
+        result = send_telegram_message(message)
+
+        return jsonify({
+            "status": "sent",
+            "telegram": result
+        })
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
