@@ -414,3 +414,99 @@ def test_alert():
             "status": "error",
             "error": str(e)
         }), 500
+
+
+# Exchange option-chain adapter
+import asyncio
+from indiaopt import NSEClient, BSEClient
+
+def _row_value(row, name, default=None):
+    return getattr(row, name, default)
+
+async def _fetch_exchange_chain(exchange, symbol):
+    client_cls = NSEClient if exchange == "NSE" else BSEClient
+    async with client_cls() as client:
+        if exchange == "BSE":
+            result = await client.fetch_option_chain("999920", is_index=True)
+        else:
+            result = await client.fetch_option_chain(symbol)
+    return result
+
+def _chain_to_json(result, exchange, symbol):
+    rows = []
+    for row in result.data:
+        rows.append({
+            "strike": _row_value(row, "strike"),
+            "ce": {
+                "ltp": _row_value(row, "call_ltp"),
+                "oi": _row_value(row, "call_oi"),
+                "change_oi": _row_value(row, "call_coi"),
+                "volume": _row_value(row, "call_vol"),
+                "iv": _row_value(row, "call_iv")
+            },
+            "pe": {
+                "ltp": _row_value(row, "put_ltp"),
+                "oi": _row_value(row, "put_oi"),
+                "change_oi": _row_value(row, "put_coi"),
+                "volume": _row_value(row, "put_vol"),
+                "iv": _row_value(row, "put_iv")
+            }
+        })
+    return {
+        "exchange": exchange,
+        "symbol": symbol,
+        "underlying": result.spot_price,
+        "atm": result.atm_strike,
+        "expiry": result.expiry,
+        "expiry_dates": result.expiry_dates,
+        "lot_size": 65 if symbol == "NIFTY" else 20,
+        "rows": rows,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat()
+    }
+
+def fetch_chain_sync(exchange, symbol):
+    return asyncio.run(_fetch_exchange_chain(exchange, symbol))
+
+@app.route("/nifty-option-chain")
+def nifty_option_chain():
+    try:
+        return jsonify(_chain_to_json(fetch_chain_sync("NSE", "NIFTY"), "NSE", "NIFTY"))
+    except Exception as e:
+        return jsonify({"error": str(e), "exchange": "NSE", "symbol": "NIFTY"}), 502
+
+@app.route("/sensex-option-chain")
+def sensex_option_chain():
+    try:
+        return jsonify(_chain_to_json(fetch_chain_sync("BSE", "SENSEX"), "BSE", "SENSEX"))
+    except Exception as e:
+        return jsonify({"error": str(e), "exchange": "BSE", "symbol": "SENSEX"}), 502
+
+@app.route("/option-quote")
+def option_quote():
+    try:
+        instrument = request.args.get("instrument", "NIFTY").upper()
+        strike = float(request.args.get("strike", "0"))
+        option_type = request.args.get("type", "CE").upper()
+        if instrument not in ("NIFTY", "SENSEX"):
+            return jsonify({"error": "Live option quote is currently enabled for NIFTY and SENSEX only."}), 400
+        chain = _chain_to_json(fetch_chain_sync("NSE" if instrument == "NIFTY" else "BSE", instrument), "NSE" if instrument == "NIFTY" else "BSE", instrument)
+        for row in chain["rows"]:
+            if float(row["strike"]) == strike:
+                leg = row["ce"] if option_type == "CE" else row["pe"]
+                return jsonify({
+                    "instrument": instrument,
+                    "strike": strike,
+                    "option_type": option_type,
+                    "expiry": chain["expiry"],
+                    "ltp": leg["ltp"],
+                    "oi": leg["oi"],
+                    "change_oi": leg["change_oi"],
+                    "volume": leg["volume"],
+                    "iv": leg["iv"],
+                    "underlying": chain["underlying"],
+                    "lot_size": chain["lot_size"],
+                    "timestamp_utc": chain["timestamp_utc"]
+                })
+        raise RuntimeError("Requested option strike was not found")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
